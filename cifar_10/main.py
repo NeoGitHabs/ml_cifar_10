@@ -51,7 +51,7 @@ transform = transforms.Compose([
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 model = CifarClassification().to(device)
-model.load_state_dict(torch.load('model_CIFAR_10.pth', map_location=device))
+model.load_state_dict(torch.load('model_CifarClassification_CIFAR_10.pth', map_location=device, weights_only=True))
 model.eval()
 
 app = FastAPI(title="CIFAR-10 Classifier")
@@ -73,6 +73,8 @@ async def check_image(file: UploadFile = File(...)):
 
         return {"class": classes[predicted_class]}
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -92,7 +94,7 @@ if __name__ == '__main__':
 #
 # if uploaded_file is not None:
 #     image = Image.open(uploaded_file).convert('RGB')
-#     st.image(image, caption='Загруженное изображение', use_column_width=True)
+#     st.image(image, caption='Загруженное изображение', use_container_width=True)
 #
 #     if st.button('🔍 Распознать', type='primary'):
 #         try:
@@ -105,7 +107,7 @@ if __name__ == '__main__':
 #
 #             st.success(f'**Модель думает, что это: {classes[predicted_idx]}**')
 #             st.info(f'Уверенность: {confidence:.1%}')
-
+#
 #             probs = torch.softmax(output, dim=1)[0]
 #             st.bar_chart(dict(zip(classes, probs.cpu().numpy())))
 #
