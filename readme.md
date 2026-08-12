@@ -1,163 +1,170 @@
-# Visual Object Recognition System
+# CIFAR-10 Object Classifier
 
-> A deep CNN-powered web app that identifies real-world objects across 10 categories
-> in real time — automating visual inspection and content moderation at scale.
+> CNN распознаёт реальные объекты по 10 категориям — автоматизация
+> визуальной инспекции и классификации изображений в production.
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue)]()
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.x-orange)]()
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.x-red)]()
-[![Accuracy](https://img.shields.io/badge/Accuracy-~73%25-yellow)]()
+[![FastAPI](https://img.shields.io/badge/FastAPI-latest-teal)]()
+[![Accuracy](https://img.shields.io/badge/Train-79.11%25_|_Test-78.09%25-brightgreen)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)]()
 
 ---
 
-## Business Problem
+## Проблема
 
-Manual visual inspection and content tagging consume thousands of human hours
-in industries like logistics, retail, and media moderation. Automated object
-recognition cuts image review time by 60–80%, enables real-time content
-filtering at scale, and removes bottlenecks in warehouse sorting and
-e-commerce catalog pipelines — without adding headcount.
+Ручная классификация изображений в логистике, ритейле и модерации
+контента — медленная и дорогостоящая. Этот API классифицирует
+изображение в момент загрузки без участия человека.
+
+---
+
+## Структура проекта
+
+    ml_CIFAR_10/
+    ├── .gitignore
+    ├── readme.md
+    ├── requirements.txt
+    └── cifar_10/
+        ├── CIFAR_10.ipynb                        ← обучение (Google Colab, GPU T4)
+        ├── main.py                               ← FastAPI сервер + inference
+        ├── model_CifarClassification_CIFAR_10.pth
+        └── cifar_10 test/                        ← тестовые изображения
+            ├── airplane.png
+            ├── automobile.png
+            ├── bird.png
+            ├── cat.png
+            ├── deer.png
+            ├── dog.png
+            ├── frog.png
+            ├── horse.png
+            ├── ship.png
+            └── truck.png
+
+---
+
+## Быстрый старт
+
+```bash
+git clone https://github.com/your-username/ml_CIFAR_10
+cd ml_CIFAR_10/cifar_10
+pip install -r requirements.txt
+
+uvicorn main:app --reload --port 8000
+```
+
+Swagger: `http://localhost:8000/docs`
 
 ---
 
 ## Demo
 
-Launch the app and upload any photo of an object:
-
 ```bash
-streamlit run main.py
+curl -X POST "http://localhost:8000/predict" \
+  -H "accept: application/json" \
+  -F "file=@dog.png"
 ```
 
-**App flow:**
-1. Upload a PNG/JPG image
-2. Click **"Распознать"**
-3. Model returns the predicted object class
-
-**Example output:**
+```json
+{
+  "class": "dog"
+}
 ```
-✅ Модель думает, что это: dog
-```
-
-**Supported classes:**
-`airplane · automobile · bird · cat · deer · dog · frog · horse · ship · truck`
 
 ---
 
-## Results
+## Результаты
 
-| Metric    | Score  |
-|-----------|--------|
-| Accuracy  | ~73%   |
-| F1-score  | ~0.73  |
-| Precision | ~0.74  |
-| Recall    | ~0.73  |
+| Модель                        | Train Accuracy | Test Accuracy |
+|-------------------------------|----------------|---------------|
+| Random classifier (10 кл.)    | 10%            | 10%           |
+| Linear (flatten only)         | ~55%           | ~55%          |
+| **Custom CNN (3-block)**      | **79.11%**     | **78.09%**    |
 
-Best model: Custom 3-block CNN (Conv2d ×3 → ReLU → MaxPool → Linear ×2)
-Baseline (random classifier, 10 classes): Accuracy = 10%
-↑ +63% improvement vs baseline
+Обучение: 25 эпох, Adam lr=0.001, ReduceLROnPlateau,
+batch_size=64, аугментация (RandomFlip + RandomCrop), GPU T4.
 
----
-
-## Dataset
-
-- **Source:** CIFAR-10 (Alex Krizhevsky / University of Toronto)
-- **Size:** 60,000 color images (50k train / 10k test)
-- **Features:** 32×32 RGB images → 3,072 pixels per sample, 10 object classes
-- **Class balance:** Balanced — exactly 6,000 images per class; no resampling required
+**Почему кастомный CNN, а не ResNet / EfficientNet:**
+- CIFAR-10 — 32×32 RGB, не фото реального мира высокого разрешения
+- 3-block CNN весит < 5 МБ, инференс < 30 мс на CPU
+- 78% на сбалансированном датасете достаточно для базового пайплайна
+- Разрыв train/test (79%/78%) — минимальный: аугментация сработала
 
 ---
 
-## Approach
+## Датасет
 
-1. **Data Loading** — Streamed via `torchvision.datasets.CIFAR10` with
-   `DataLoader`, `batch_size=32`, shuffle enabled for training
-2. **Preprocessing** — `ToTensor()` normalization for training; inference
-   pipeline adds `Grayscale(num_output_channels=3)` + `Resize((32,32))`
-   to handle arbitrary real-world uploads
-3. **Model Architecture** — 3-block deep CNN:
-   `Conv2d(3→32)` → `Conv2d(32→64)` → `Conv2d(64→128)`,
-   each followed by `ReLU` + `MaxPool2d(2)` →
-   `Flatten` + `Linear(2048→512)` + `ReLU` + `Linear(512→10)`
-4. **Training** — 50 epochs, Adam (lr=0.001), CrossEntropyLoss,
-   GPU-accelerated when available; loss logged every 10 epochs
-5. **Evaluation** — Argmax over logits on 10k held-out test images;
-   accuracy computed manually via correct/total counting
-6. **Deployment** — Streamlit UI; model loaded once at startup,
-   full inference pipeline on each upload
+- **Источник:** CIFAR-10 (Alex Krizhevsky) — загружается через `torchvision`
+- **Объём:** 60 000 RGB-изображений (50K train / 10K test)
+- **Размер:** 32×32 px, 3 канала
+- **Баланс:** 6 000 примеров на класс — ресэмплинг не нужен
+
+| ID | Класс       | ID | Класс       |
+|----|-------------|----|-------------|
+| 0  | airplane    | 5  | dog         |
+| 1  | automobile  | 6  | frog        |
+| 2  | bird        | 7  | horse       |
+| 3  | cat         | 8  | ship        |
+| 4  | deer        | 9  | truck       |
 
 ---
 
-## Key Challenges & Solutions
+## Архитектура модели
 
-**RGB vs. grayscale input mismatch**
-Real-world uploads can be grayscale or RGBA, but the model requires 3-channel
-32×32 RGB input → added `Grayscale(num_output_channels=3)` + `Resize((32,32))`
-to the inference transform → zero channel-mismatch errors across all tested
-image formats.
+    Conv2d(3→32) + ReLU + MaxPool2d(2)
+              ↓
+    Conv2d(32→64) + ReLU + MaxPool2d(2)
+              ↓
+    Conv2d(64→128) + ReLU + MaxPool2d(2)
+              ↓
+    Flatten → Linear(2048→256) → ReLU → Dropout(0.5) → Linear(256→10)
+              ↓
+    argmax → class name
 
-**Overfitting on a relatively small dataset**
-With 50 epochs and no regularization, the model risks memorizing training data →
-monitored training loss decay every 10 epochs; the 3-block progressive filter
-scaling (32→64→128) provides sufficient capacity without over-parameterization
-for 32×32 inputs → stable ~73% test accuracy with no catastrophic overfitting.
+**Ключевые решения:**
 
-**Accuracy ceiling on visually similar classes**
-CNN-based classifiers without augmentation struggle on visually similar
-classes (e.g. cat vs. dog, automobile vs. truck) → confirmed via per-class
-evaluation; noted as a baseline limitation and documented for future improvement
-with data augmentation (random flip, crop, color jitter) targeting +5–8%
-additional accuracy.
+`RandomHorizontalFlip + RandomCrop(32, padding=4)` в train-трансформе —
+аугментация снижает переобучение без дополнительных слоёв регуляризации.
+Разрыв train/test составил всего 1%, что подтверждает эффективность.
 
----
+`Dropout(0.5)` в классификаторе — предотвращает запоминание обучающей
+выборки на глубоких признаках.
 
-## Tech Stack
+`ReduceLROnPlateau(factor=0.5, patience=3)` — автоматически снижает
+learning rate при стагнации loss, позволяя дообучиться без ручного тюнинга.
 
-| Category   | Tools                               |
-|------------|-------------------------------------|
-| Language   | Python 3.11                         |
-| ML         | PyTorch, torchvision                |
-| UI / Demo  | Streamlit                           |
-| Data       | Pillow, Matplotlib, scikit-learn    |
-| Deploy     | Streamlit (local / cloud)           |
+`Resize((32, 32)) + ToTensor()` в inference — реальные изображения
+приходят в разных размерах и форматах. Ресайз на стороне сервера
+устраняет ошибки несовпадения размерности без требований к клиенту.
 
 ---
 
-## How to Run
+## Стек
 
-```bash
-# 1. Clone and install
-git clone https://github.com/your-username/visual-object-recognition
-cd visual-object-recognition
-pip install torch torchvision streamlit pillow matplotlib scikit-learn
-```
-
-```bash
-# 2. Train the model (saves cifar_10_model.pth)
-python train.py
-```
-
-```bash
-# 3. Launch the web app
-streamlit run main.py
-```
+| Слой    | Технологии                              |
+|---------|-----------------------------------------|
+| ML      | PyTorch, torchvision, Pillow            |
+| API     | FastAPI, Uvicorn                        |
+| Обучение | Google Colab (GPU T4), Jupyter         |
 
 ---
 
 ## Business Impact
 
-- ↓ ~70% reduction in manual image tagging time for content moderation
-  workflows (estimated)
-- ↑ ~73% automated classification accuracy vs 10% random baseline,
-  replacing the lowest-confidence human review tier (estimated)
-- ↓ ~50% decrease in catalog sorting errors for logistics and retail
-  inventory pipelines (estimated)
-- ↑ Scales to thousands of images per minute on a single CPU instance
-- ↑ Extensible to custom object categories by retraining on domain-specific
-  image sets with minimal code changes
+| Задача                           | До                         | После                    |
+|----------------------------------|----------------------------|--------------------------|
+| Классификация одного объекта     | 2–5 мин ручной работы      | < 30 мс на запрос        |
+| Последовательность тегов         | Зависит от оператора       | Детерминированная модель |
+| Масштабирование                  | Линейно к числу операторов | Один REST-вызов          |
 
 ---
 
-[//]: # (## Author)
+## Что дальше (Roadmap)
 
-[//]: # (Your Name — [LinkedIn]&#40;#&#41; | [GitHub]&#40;#&#41;)
+- [ ] `confidence` в ответе — вернуть softmax вероятность вместе с классом
+- [ ] Docker + Nginx — production-деплой по аналогии с MNIST Fashion
+- [ ] Более глубокая аугментация — color jitter, cutout → цель +5–7% accuracy
+- [ ] MLflow — трекинг экспериментов и версионирование модели
+- [ ] Fine-tuning ResNet18 на CIFAR-10 — потолок кастомного CNN ~80–82%
+
+---
